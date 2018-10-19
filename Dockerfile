@@ -1,38 +1,34 @@
-FROM debian:9.2
+FROM ubuntu:14.04
+MAINTAINER Brad Parker <brad@parker1723.com>
+RUN apt-get update
+RUN apt-get -y upgrade
+RUN DEBIAN_FRONTEND=noninteractive apt-get -y install mysql-client mysql-server apache2 libapache2-mod-php5 pwgen python-setuptools vim-tiny php5-mysql  php5-ldap unzip
 
-LABEL maintainer "opsxcq@strm.sh"
-
-RUN apt-get update && \
-    apt-get upgrade -y && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    debconf-utils && \
-    echo mariadb-server mysql-server/root_password password vulnerables | debconf-set-selections && \
-    echo mariadb-server mysql-server/root_password_again password vulnerables | debconf-set-selections && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y \
-    apache2 \
-    mariadb-server \
-    php \
-    php-mysql \
-    php-pgsql \
-    php-pear \
-    php-gd \
-    && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
-
-COPY php.ini /etc/php5/apache2/php.ini
-COPY dvwa /var/www/html
-
-COPY config.inc.php /var/www/html/config/
-
-RUN chown www-data:www-data -R /var/www/html && \
-    rm /var/www/html/index.html
-
-RUN service mysql start && \
-    sleep 3 && \
-    mysql -uroot -pvulnerables -e "CREATE USER app@localhost IDENTIFIED BY 'vulnerables';CREATE DATABASE dvwa;GRANT ALL privileges ON dvwa.* TO 'app'@localhost;"
+# setup hackazon
+RUN easy_install supervisor
+ADD ./scripts/start.sh /start.sh
+ADD ./scripts/passwordHash.php /passwordHash.php
+ADD ./scripts/foreground.sh /etc/apache2/foreground.sh
+ADD ./configs/supervisord.conf /etc/supervisord.conf
+ADD ./configs/000-default.conf /etc/apache2/sites-available/000-default.conf
+RUN rm -rf /var/www/
+ADD https://github.com/rapid7/hackazon/archive/master.zip /hackazon-master.zip
+RUN unzip /hackazon-master.zip -d hackazon
+RUN mkdir /var/www/
+RUN mv /hackazon/hackazon-master/ /var/www/hackazon
+RUN cp /var/www/hackazon/assets/config/db.sample.php /var/www/hackazon/assets/config/db.php
+RUN cp /var/www/hackazon/assets/config/email.sample.php /var/www/hackazon/assets/config/email.php
+ADD ./configs/parameters.php /var/www/hackazon/assets/config/parameters.php
+ADD ./configs/rest.php /var/www/hackazon/assets/config/rest.php
+ADD ./configs/createdb.sql /var/www/hackazon/database/createdb.sql
+RUN chown -R www-data:www-data /var/www/
+RUN chown -R www-data:www-data /var/www/hackazon/web/products_pictures/
+RUN chown -R www-data:www-data /var/www/hackazon/web/upload
+RUN chown -R www-data:www-data /var/www/hackazon/assets/config
+RUN chmod 755 /start.sh
+RUN chmod 755 /etc/apache2/foreground.sh
+RUN a2enmod rewrite 
+RUN mkdir /var/log/supervisor/
 
 EXPOSE 80
-
-COPY main.sh /
-ENTRYPOINT ["/main.sh"]
+CMD ["/bin/bash", "/start.sh"]
